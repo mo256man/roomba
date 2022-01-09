@@ -5,58 +5,61 @@ import sys
 import random
 import serial.tools.list_ports
 
+"""
+ルンバを動かす
+    robot.go(cm_per_sec=, deg_per_sec)
+        cm_per_sec…
+        deg_per_sec…
+
+
+    robot.stop()
+        ルンバを停止する
+        内部的にrobot.go(0,0)と同じ
+
+    
+
+"""
+
 
 def get_roomba_port():
+    """
+    シリアル接続のポート番号を取得する　USBに一つだけつながっているという前提
+    """
     comports = serial.tools.list_ports.comports()           # ポートデータ取得
-    port = ""
-    for comport in comports:                                # 
-        if "/dev/ttyUSB" in comport.device:
-            port = comport.device
+    port = ""                                               # ポートの初期値
+    for comport in comports:                                # 取得した個々のポートデータにおいて
+        if "/dev/ttyUSB" in comport.device:                 # "/dev/ttyUSB" という文字列がデバイスにあったら
+            port = comport.device                           # それがルンバが接続されているポート
     
-    if port == "":
-        print("no roomba found")
-        sys.exit()
+    if port == "":                                          # ルンバが見つからなかったら
+        print("ルンバが見つかりません")                           # メッセージを表示して
+        sys.exit()                                          # プログラムを中断する
     return port
     
 
 
 def main():
-    ROOMBA_PORT = get_roomba_port()
-    print (ROOMBA_PORT)
+    ROOMBA_PORT = get_roomba_port()                         # ルンバのポートを取得
+    robot = create.Create(ROOMBA_PORT)                      # そのポートでルンバを操作する
     
-    robot = create.Create(ROOMBA_PORT)
-    
-    robot._start()
-    robot.toSafeMode()    
-#    robot.toFullMode() # dont stop    
+    robot._start()                                          # ルンバ起動
+    robot.toSafeMode()                                      # セーフモードにする
+#    robot.toFullMode()                                     # 持ち上げても止まらないフルモードにするにはこちら
     
 #    robot.printSensors() 
 
-    while True:
+    while True:                                             # 無限ループ
         
-        if robot.getMode() != create.SAFE_MODE:
-            sys.exit()
+        if robot.getMode() != create.SAFE_MODE:             # セーフモードでなくなったら
+            robot.stop()                                    # ロボットを停止して
+            sys.exit()                                      # プログラムを中断する
+        
+        # ここから下にルンバで迷路を脱出するコードを書く
             
-        #print(datetime.datetime.now(), "CLIFF_FRONT_LEFT", robot.senseFunc(create.CLIFF_FRONT_LEFT)()) 
+         
 
-        if not (robot.senseFunc(create.LEFT_BUMP)() or robot.senseFunc(create.RIGHT_BUMP)()):
-            print("go foward")
-            robot.go(10, 0)
-        else:
-            print("back and turn")
-            robot.stop()
-            time_end = time.time() + 1  # sec
-            while time.time() < time_end:
-                robot.go(-10, 0)
+        time.sleep(0.1)                                     # 0.1秒停止する
 
-            sign = random.randint(0,1)*2-1      # -1 0r 1
-            time_end = time.time() + 1  # sec
-            while time.time() < time_end:
-                robot.go(0, sign*45)
 
-        
-        time.sleep(0.1)
-    
-    
 if __name__ == "__main__":
     main()
