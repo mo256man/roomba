@@ -1,0 +1,147 @@
+import cv2
+import numpy as np
+import math
+import sys
+from PIL import Image
+
+class Roomba_sim():
+    # スケール　ルンバの直径は34cm、ルンバ画像のサイズは340*340。つまりスケール1だと1cm=10ピクセルとなる　
+
+    def __init__(self, scale=0.5, width=600, height=600):
+        self.name = "roomba simulator"
+        self.scale = scale
+        self.timer = 0
+        self.imgs = []
+
+        # マップ作成
+        map = np.full((height, width, 3), (255,255,255), np.uint8)
+
+        # 原点
+        self.cx = width//2
+        self.cy = height//2 + 200
+
+        # 初期値
+        self.x = 0
+        self.y = 0
+        self.angle = 0
+
+        # 方眼紙
+        color = (0, 255, 0)
+        for x in range(0, width, int(100*scale)):
+            cv2.line(map, (x, 0), (x, width-1), color, 1)
+            cv2.putText(map, str(int((x-self.cx)/scale)), (x+5, self.cy-5), cv2.FONT_HERSHEY_DUPLEX, 0.5, color, 1)
+        for y in range(0, height, int(100*scale)):
+            cv2.line(map, (0, y), (width-1, y), color, 1)
+            cv2.putText(map, str(int((self.cy-y)/scale)), (self.cx+5, y-5), cv2.FONT_HERSHEY_DUPLEX, 0.5, color, 1)
+        cv2.line(map, (self.cx, 0), (self.cx, height-1), color, 3)
+        cv2.line(map, (0, self.cy), (width-1, self.cy), color, 3)
+        self.screen = map
+
+        # ルンバ画像
+        filename = "roomba.png"
+        image = cv2.imread(filename, -1)
+        image = cv2.resize(image, None, fx=scale, fy=scale)
+        self.rx = image.shape[0]//2
+        self.ry = image.shape[1]//2
+        cv2.line(image, (self.rx, 0), (self.rx, 2*self.ry), (0,0,255,255), 1)
+        cv2.line(image, (0, self.ry), (2*self.rx, self.ry), (0,0,255,255), 1)
+        self.roomba = image
+
+
+    def putRoomba(self, t=0):
+        # マップにルンバを重ね書きする
+        img = putSprite(self.screen, self.roomba, (self.x+self.cx,self.y+self.cy), self.angle, (self.rx, self.ry))
+
+        # マップにルンバの座標を描写する
+        sx = round(self.x/self.scale, 1)
+        sy = round(-self.y/self.scale, 1)
+        a = round(self.angle, 2)
+        cv2.putText(img, f"(x, y)=({sx}, {sy})  angle={a}[rad]", (10, 50), cv2.FONT_HERSHEY_DUPLEX, 1, (0,0,0), 2)
+        cv2.putText(img, f"time={round(t, 1)}", (10, 100), cv2.FONT_HERSHEY_DUPLEX, 1, (0,0,0), 2)
+        cv2.imshow(self.name, img)
+        self.imgs.append(Image.fromarray(img[:, :, ::-1]))
+        key = cv2.waitKey(100) & 0xFF
+        if key == 27:
+            cv2.destroyAllWindows()
+            sys.exit()
+
+    def stop(self):
+        self.putRoomba(self.timer)
+
+
+    def go(self, cm_per_sec, wait_sec):
+        # 0.1秒刻みで動くので、走行スピードはcm_per_secの1/10となる
+        t = 0
+        v = cm_per_sec/10
+        vx = v * math.cos(self.angle + math.pi/2) * self.scale
+        vy = v * math.sin(self.angle + math.pi/2) * self.scale
+        print(vx, vy)
+        while True:
+            self.timer += 1
+            t += 0.1
+            if t < wait_sec:
+                self.x += vx
+                self.y -= vy 
+                self.putRoomba(self.timer)
+            else:
+                break
+            
+
+    def turn(self, rad_per_sec, wait_sec):
+        # 0.1秒刻みで動くので、旋回スピードはrad_per_secの1/10となる
+        t = 0
+        a = rad_per_sec/10
+        while True:
+            self.timer += 1
+            t += 0.1
+            if t < wait_sec:
+                self.angle += a
+                self.putRoomba(self.timer)
+            else:
+                break
+
+    def save_anim_gif(self):
+        self.imgs[0].save("anim.gif", save_all=True, append_images=self.imgs[1:], 
+            optimize=False, duration=100, loop=0)
+
+
+def putSprite(back, front4, pos, angle=0, home=(0,0)):  # 角度はラジアン
+    fh, fw = front4.shape[:2]
+    bh, bw = back.shape[:2]
+    x, y = pos
+    xc, yc = home[0] - fw/2, home[1] - fh/2             # homeを左上基準から画像中央基準にする
+    #a = np.radians(angle)
+    rad = angle
+    deg = rad / (2*math.pi/360)
+    cos , sin = np.cos(rad), np.sin(rad)                # この三角関数は何度も出るので変数にする
+    w_rot = int(fw * abs(cos) + fh * abs(sin))
+    h_rot = int(fw * abs(sin) + fh * abs(cos))
+    M = cv2.getRotationMatrix2D((fw/2,fh/2), deg, 1)  # 画像中央で回転
+    M[0][2] += w_rot/2 - fw/2
+    M[1][2] += h_rot/2 - fh/2
+    imgRot = cv2.warpAffine(front4, M, (w_rot,h_rot))   # 回転画像を含む外接四角形
+
+    # 外接四角形の全体が背景画像外なら何もしない
+    xc_rot = xc * cos + yc * sin                        # 画像中央で回転した際の移動量
+    yc_rot = -xc * sin + yc * cos
+    x0 = int(x - xc_rot - w_rot / 2)                    # 外接四角形の左上座標   
+    y0 = int(y - yc_rot - h_rot / 2)
+    if not ((-w_rot < x0 < bw) and (-h_rot < y0 < bh)) :
+        return back
+
+    # 外接四角形のうち、背景画像内のみを取得する
+    x1, y1 = max(x0,  0), max(y0,  0)
+    x2, y2 = min(x0 + w_rot, bw), min(y0 + h_rot, bh)
+    imgRot = imgRot[y1-y0:y2-y0, x1-x0:x2-x0]
+
+    # マスク手法で外接四角形と背景を合成する
+    result = back.copy()
+    front = imgRot[:, :, :3]
+    mask1 = imgRot[:, :, 3]
+    mask = 255 - cv2.merge((mask1, mask1, mask1))
+    roi = result[y1:y2, x1:x2]
+    tmp = cv2.bitwise_and(roi, mask)
+    tmp = cv2.bitwise_or(tmp, front)
+    result[y1:y2, x1:x2] = tmp
+    return result
+
