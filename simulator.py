@@ -7,13 +7,13 @@ from PIL import Image
 class Roomba_sim():
     # スケール　ルンバの直径は34cm、ルンバ画像のサイズは340*340。つまりスケール1だと1cm=10ピクセルとなる　
 
-    def __init__(self, scale=0.5, width=600, height=600, debug=False):
+    def __init__(self, scale=0.5, width=800, height=800, debug=False):
         if debug:
             self.wait_cv_time = 0
         else:
             self.wait_cv_time = 50
             
-        self.name = "roomba simulator"
+        self.name = "Roomba Simulator"
         self.scale = scale
         self.timer = 0
         self.font = cv2.FONT_HERSHEY_DUPLEX
@@ -39,6 +39,7 @@ class Roomba_sim():
             cv2.putText(map, str(int((self.cy-y)/scale)), (self.cx+5, y-5), self.font, 0.5, color, 1)
         cv2.line(map, (self.cx, 0), (self.cx, height-1), color, 3)
         cv2.line(map, (0, self.cy), (width-1, self.cy), color, 3)
+        cv2.putText(map, self.name, (10, 50), self.font, 1.5, (0,0,255), 2)
         self.screen = map
 
         # ルンバ画像
@@ -52,7 +53,7 @@ class Roomba_sim():
         self.roomba = image
         self.putRoomba(t=0)
 
-    def putRoomba(self, t=0):
+    def putRoomba(self, t=0, command=""):
         # マップに軌跡を残す
         cv2.circle(self.screen, (int(self.x+self.cx), int(self.y+self.cy)), 5, (0,0,255), -1)
 
@@ -64,11 +65,12 @@ class Roomba_sim():
         sy = round(-self.y/self.scale, 1)
         rad = round(self.angle, 2)
         deg = round(self.angle * 360 / (2*math.pi))
-        cv2.putText(img, f"(x, y)=({sx}, {sy})", (10, 50), self.font, 1, (0,0,0), 2)
-        cv2.putText(img, f"angle={rad}[rad]={deg}[degree]", (10, 100), self.font, 1, (0,0,0), 2)
-        cv2.putText(img, f"time={round(t, 1)}", (10, 150), self.font, 1, (0,0,0), 2)
+        cv2.putText(img, f"(x, y)=({sx}, {sy})", (10, 100), self.font, 1, (0,0,0), 2)
+        cv2.putText(img, f"angle={rad}[rad]={deg}[degree]", (10, 150), self.font, 1, (0,0,0), 2)
+        cv2.putText(img, f"command={command}", (10, 200), self.font, 1, (0,0,0), 2)
+        cv2.putText(img, f"time={round(t/10, 1)}[sec]", (10, 250), self.font, 1, (0,0,0), 2)
         cv2.imshow(self.name, img)
-        self.imgs.append(Image.fromarray(img[:, :, ::-1]))
+        self.imgs.append(img)
         key = cv2.waitKey(self.wait_cv_time) & 0xFF
         if key == 27:
             cv2.destroyAllWindows()
@@ -78,7 +80,7 @@ class Roomba_sim():
         self.putRoomba(self.timer)
 
 
-    def go(self, mm_per_sec, wait_sec):
+    def go(self, mm_per_sec, wait_sec, command=""):
         # 0.1秒刻みで動くので、走行スピードはcm_per_secの1/10となる
         t = 0
         v = mm_per_sec / 10
@@ -89,13 +91,13 @@ class Roomba_sim():
                 self.timer += 1
                 self.x += vx
                 self.y -= vy 
-                self.putRoomba(self.timer)
+                self.putRoomba(self.timer, command=command)
             else:
                 break
             t = round(t + 0.1, 1)
 
 
-    def turn(self, rad_per_sec, wait_sec):
+    def turn(self, rad_per_sec, wait_sec, command=""):
         # 0.1秒刻みで動くので、旋回スピードはrad_per_secの1/10となる
         t = 0
         a = rad_per_sec/10
@@ -103,18 +105,21 @@ class Roomba_sim():
             if t < wait_sec:
                 self.timer += 1
                 self.angle += a
-                self.putRoomba(self.timer)
+                self.putRoomba(self.timer, command=command)
             else:
                 break
             t = round(t + 0.1, 1)
 
     def end(self):
         cv2.imshow(self.name, self.screen)
-        cv2.waitKey(3000)
+        cv2.waitKey(5000)
         cv2.destroyAllWindows()
+        self.save_anim_gif()
+
 
     def save_anim_gif(self):
-        self.imgs[0].save("anim.gif", save_all=True, append_images=self.imgs[1:], 
+        imgPILS = [Image.fromarray(img[:, :, ::-1]) for img in self.imgs]           # 内包表記でPIL画像のリストを作る
+        imgPILS[0].save("anim.gif", save_all=True, append_images=imgPILS[1:], 
             optimize=False, duration=100, loop=0)
 
 
