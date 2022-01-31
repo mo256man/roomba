@@ -64,7 +64,7 @@ class Roomba_sim():
         sx = round(self.x/self.scale, 1)
         sy = round(-self.y/self.scale, 1)
         rad = round(self.angle, 2)
-        deg = round(self.angle * 360 / (2*math.pi))
+        deg = round(self.angle * 360 / (2*math.pi), 2)
         cv2.putText(img, f"(x, y)=({sx}, {sy})", (10, 100), self.font, 1, (0,0,0), 2)
         cv2.putText(img, f"angle={rad}[rad]={deg}[degree]", (10, 150), self.font, 1, (0,0,0), 2)
         cv2.putText(img, f"command={command}", (10, 200), self.font, 1, (0,0,0), 2)
