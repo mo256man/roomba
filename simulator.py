@@ -3,11 +3,12 @@ import numpy as np
 import math
 import sys
 from PIL import Image
+import csv
 
 class Roomba_sim():
     # スケール　ルンバの直径は34cm、ルンバ画像のサイズは340*340。つまりスケール1だと1cm=10ピクセルとなる　
 
-    def __init__(self, scale=0.5, width=800, height=800, debug=False):
+    def __init__(self, scale=0.25, width=800, height=800, debug=False, filename="course.csv", save_anim=False):
         if debug:
             self.wait_cv_time = 0
         else:
@@ -17,30 +18,16 @@ class Roomba_sim():
         self.scale = scale
         self.timer = 0
         self.font = cv2.FONT_HERSHEY_DUPLEX
+        self.save_anim = save_anim
         self.imgs = []
 
-        # 原点
-        self.cx = width//2
-        self.cy = height//2 + 200
+        # マップ作成
+        self.load_map(filename)
 
         # 初期値
         self.x = 0
         self.y = 0
-        self.angle = 0
-
-        # 方眼紙作成
-        map = np.full((height, width, 3), (255,255,255), np.uint8)
-        color = (0, 255, 0)
-        for x in range(0, width, int(100*scale)):
-            cv2.line(map, (x, 0), (x, width-1), color, 1)
-            cv2.putText(map, str(int((x-self.cx)/scale)), (x+5, self.cy-5), self.font, 0.5, color, 1)
-        for y in range(0, height, int(100*scale)):
-            cv2.line(map, (0, y), (width-1, y), color, 1)
-            cv2.putText(map, str(int((self.cy-y)/scale)), (self.cx+5, y-5), self.font, 0.5, color, 1)
-        cv2.line(map, (self.cx, 0), (self.cx, height-1), color, 3)
-        cv2.line(map, (0, self.cy), (width-1, self.cy), color, 3)
-        cv2.putText(map, self.name, (10, 50), self.font, 1.5, (0,0,255), 2)
-        self.screen = map
+        self.angle = -90 * 2 * math.pi / 360
 
         # ルンバ画像
         filename = "roomba.png"
@@ -53,22 +40,28 @@ class Roomba_sim():
         self.roomba = image
         self.putRoomba(t=0)
 
+        cv2.imshow(self.name, self.screen)
+
+
     def putRoomba(self, t=0, command=""):
         # マップに軌跡を残す
-        cv2.circle(self.screen, (int(self.x+self.cx), int(self.y+self.cy)), 5, (0,0,255), -1)
+        cv2.circle(self.screen, (int(self.x+self.gx), int(self.y+self.gy)), 5, (0,0,255), -1)
+        cv2.circle(self.screen, (int(self.x+self.gx), int(self.y+self.gy)), self.ry, (0,0,255), 1)
 
         # マップにルンバを重ね書きする
-        img = putSprite(self.screen, self.roomba, (self.x+self.cx,self.y+self.cy), self.angle, (self.rx, self.ry))
+        img = putSprite(self.screen.copy(), self.roomba, (self.x+self.gx,self.y+self.gy), self.angle, (self.rx, self.ry))
 
         # マップにルンバの座標を描写する
         sx = round(self.x/self.scale, 1)
         sy = round(-self.y/self.scale, 1)
         rad = round(self.angle, 2)
         deg = round(self.angle * 360 / (2*math.pi), 2)
+        """
         cv2.putText(img, f"(x, y)=({sx}, {sy})", (10, 100), self.font, 1, (0,0,0), 2)
         cv2.putText(img, f"angle={rad}[rad]={deg}[degree]", (10, 150), self.font, 1, (0,0,0), 2)
         cv2.putText(img, f"command={command}", (10, 200), self.font, 1, (0,0,0), 2)
         cv2.putText(img, f"time={round(t/10, 1)}[sec]", (10, 250), self.font, 1, (0,0,0), 2)
+        """
         cv2.imshow(self.name, img)
         self.imgs.append(img)
         key = cv2.waitKey(self.wait_cv_time) & 0xFF
@@ -112,15 +105,95 @@ class Roomba_sim():
 
     def end(self):
         cv2.imshow(self.name, self.screen)
+        if self.save_anim:
+            self.save_anim_gif()
         cv2.waitKey(5000)
         cv2.destroyAllWindows()
-        self.save_anim_gif()
 
 
     def save_anim_gif(self):
         imgPILS = [Image.fromarray(img[:, :, ::-1]) for img in self.imgs]           # 内包表記でPIL画像のリストを作る
         imgPILS[0].save("anim.gif", save_all=True, append_images=imgPILS[1:], 
             optimize=False, duration=100, loop=0)
+
+
+    def scaling(self, list, scale=None):
+        if scale is None:
+            scale = self.scale
+        np_arr = np.array(list)
+        return  (np_arr * scale).astype(np.int16)
+
+    def load_map(self, filename):
+        # csvを辞書として取り込む
+        maze_data = {}
+        with open(filename, encoding="utf-8") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row):
+                    for i, elm in enumerate(row):
+                        elm = elm.strip()
+                        sign = elm[0]
+                        if sign == "-":
+                            elm = elm[1:]
+                        if elm.isnumeric():
+                            row[i] = float(elm)
+                            if sign == "-":
+                                row[i] = -row[i]
+                    key = row[0]
+                    val = row[1:]
+                    maze_data[key] = val
+
+        # データに則って画像を描写する
+        # 画像サイズ
+        width, height = self.scaling(maze_data["size"], 1)
+        imgH, imgW = self.scaling([height, width])
+        map = np.full((imgH, imgW, 3), (255,255,255), np.uint8)
+
+
+        # 原点
+        x0, y0 = self.scaling(maze_data["origin"])
+        
+        # 枠
+        x, y, w, h = self.scaling(maze_data["frame"])
+        cv2.rectangle(map, (x0+x,y0+y), (x0+x+w, y0+y+h), (0,0,0), 4)
+
+        # 方眼紙
+        x1 = (x0/100 + 1) * 100
+        x2 = ((width-x0)/100 + 1) * 100
+        x1, x2, step = self.scaling(np.array([x0-x1, x0+x2, 100]))
+        for x in range(x1, x2, step):
+            cv2.line(map, (x,0), (x, height-1), (0,255,0), 1)
+
+        y1 = (y0/100 + 1) * 100
+        y2 = ((height-y0)/100 + 1) * 100
+        y1, y2, step = self.scaling(np.array([y0-y1, y0+y2, 100]))
+        for y in range(y1, y2, step):
+            cv2.line(map, (0,y), (width-1, y), (0,255,0), 1)
+
+        # スタート位置
+        x, y, w, h = self.scaling(maze_data["start_area"])
+        cv2.rectangle(map, (x0+x,y0-y), (x0+x+w, y0-y-h), (255,0,0), 2)
+
+        # ゴール位置
+        x, y, w, h = self.scaling(maze_data["goal_area"])
+        cv2.rectangle(map, (x0+x,y0-y), (x0+x+w, y0-y-h), (255,0,0), 2)
+
+        # ポール
+        pts = self.scaling(maze_data["pole"])
+        for i in range(0, len(pts), 2):
+            x, y = pts[i], pts[i+1]
+            cv2.circle(map, (x0+x,y0-y), int(150*self.scale), (255,0,0), -1)
+
+        # ルンバスタート
+        x, y = self.scaling(maze_data["start"])
+        self.gx, self.gy = x0+x, y0-y
+
+        # タイトル文字
+        cv2.putText(map, self.name, (10, 40), self.font, 1.5, (0,0,255), 2)
+        self.screen = map
+        
+
+
 
 
 def putSprite(back, front4, pos, angle=0, home=(0,0)):  # 角度はラジアン

@@ -1,4 +1,4 @@
-from pyroombaadapter import PyRoombaAdapter                 # ルンバを操作するライブラリ
+#from pyroombaadapter import PyRoombaAdapter                 # ルンバを操作するライブラリ
 #import create                                              # ルンバを操作するライブラリ
 import time                                                 # 時間に関するライブラリ
 import sys                                                  # システムに関するライブラリ
@@ -46,7 +46,7 @@ if ROOMBA_PORT != False:                                    # ポートが見つ
     robot = PyRoombaAdapter(ROOMBA_PORT)                    # そのポートでルンバを操作する
     robot.change_mode_to_safe()                             # ルンバをセーフモードで起動する
 
-sim = Roomba_sim(debug=False)                               # クラス「Roomba_sim」を使う
+sim = Roomba_sim(save_anim=True)                               # クラス「Roomba_sim」を使う
 
 
 """
@@ -119,14 +119,13 @@ def turn(angle_degree):                                     # 角度はdegreeで
 
 # ここから下にルンバで迷路を脱出するコードを書く
 # 以下は例
-go(500)
+go(700)
+turn(-65)
+go(700)
+turn(65)
+go(550)
 turn(90)
 go(500)
-turn(90)
-go(500)
-turn(-90)
-go(-500)
-turn(-90)
 
 # 最後に、ルンバとの通信を切る
 if ROOMBA_PORT != False:
